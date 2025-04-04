@@ -830,7 +830,7 @@ class RenderContext extends h3d.impl.RenderContext {
 			flush();
 		var shaderChanged = needInitShaders, paramsChanged = false;
 		var objShaders = obj.shaders;
-		var curShaders = currentShadersTail.next;
+		var curShaders = currentShadersTail?.next;
 		while( objShaders != null && curShaders != null ) {
 			var s = objShaders.s;
 			var t = curShaders.s;
