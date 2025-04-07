@@ -239,6 +239,9 @@ class Window {
 	}
 
 	public function resize( width : Int, height : Int ) : Void {
+		canvas.width = width;
+		canvas.height = height;
+		onResize(null);
 	}
 
 	public function addDragAndDropTarget( f : ( event : DropFileEvent ) -> Void ) : Void {
