@@ -1,5 +1,7 @@
 package hxd;
 
+import js.html.VisibilityState;
+
 enum Platform {
 	IOS;
 	Android;
@@ -37,6 +39,7 @@ class System {
 
 	/** If greater than 0, this will reduce loop framerate to reduce CPU usage **/
 	public static var fpsLimit = -1;
+	static var lastRqfId = 0;
 
 	public static function getCurrentLoop() : Void -> Void {
 		return loopFunc;
@@ -50,24 +53,48 @@ class System {
 		loopFunc = f;
 	}
 
-	static function browserLoop() {
-		if( js.Browser.supported ) {
-			var window : Dynamic = js.Browser.window;
-			var rqf : Dynamic = window.requestAnimationFrame ||
-				window.webkitRequestAnimationFrame ||
-				window.mozRequestAnimationFrame;
-			if( fpsLimit>0 )
-				js.Browser.window.setTimeout( ()->rqf(browserLoop), 1000/fpsLimit );
-			else
-				rqf(browserLoop);
+	public static var gameHasFocus(default, null): Bool;
+
+	// static function browserLoop() {
+	// 	if( js.Browser.supported ) {
+	// 		var window : Dynamic = js.Browser.window;
+	// 		var rqf : Dynamic = window.requestAnimationFrame ||
+	// 			window.webkitRequestAnimationFrame ||
+	// 			window.mozRequestAnimationFrame;
+	// 		if( fpsLimit>0 ) //Should we use setTimouout always?
+	// 			js.Browser.window.setTimeout( ()->rqf(browserLoop), 1000/fpsLimit );
+	// 		else
+	// 			rqf(browserLoop);
+	// 	} else {
+	// 		#if (nodejs && hxnodejs)
+	// 		js.node.Timers.setTimeout(browserLoop, 0);
+	// 		#else
+	// 		throw "Cannot use browserLoop without Browser support nor defining nodejs + hxnodejs";
+	// 		#end
+	// 	}
+	// 	if( loopFunc != null ) loopFunc();
+	// }
+
+	static function browserLoop(?deltaTime:Float) {
+		//js.html.Console.log("LOOP");
+		lastRqfId = 0;
+		
+		var frameStartTime = js.Browser.window.performance.now();
+		
+		if (loopFunc != null) loopFunc();
+		
+		if(gameHasFocus) {
+			lastRqfId = js.Browser.window.requestAnimationFrame(browserLoop);
 		} else {
-			#if (nodejs && hxnodejs)
-			js.node.Timers.setTimeout(browserLoop, 0);
-			#else
-			throw "Cannot use browserLoop without Browser support nor defining nodejs + hxnodejs";
-			#end
+			//js.html.Console.log("SCHEDULE ON TIMEOUT");
+			var targetFPS = 60;
+			var targetFrameTime = 1000 / targetFPS;
+			var currentTime = js.Browser.window.performance.now();
+			var frameTime = currentTime - frameStartTime;
+			var nextDelay = Math.max(0, targetFrameTime - frameTime);
+			js.Browser.window.setTimeout(browserLoop, Std.int(nextDelay));
 		}
-		if( loopFunc != null ) loopFunc();
+		
 	}
 
 	public static function start( callb : Void -> Void ) : Void {
@@ -179,6 +206,18 @@ class System {
 
 	static function __init__() : Void {
 		haxe.MainLoop.add(updateCursor, -1);
+
+		js.Browser.document.addEventListener("visibilitychange", function() {
+			//js.html.Console.log("VISIBILITY IS NOW " + js.Browser.document.visibilityState);
+			gameHasFocus = js.Browser.document.visibilityState == VisibilityState.VISIBLE;
+			if(lastRqfId > 0) {
+				//Switch over to setTimeout loop
+				js.Browser.window.cancelAnimationFrame(lastRqfId);
+				lastRqfId = 0;
+				js.Browser.window.setTimeout(browserLoop, 0);
+			}
+		});
+		gameHasFocus = js.Browser.document.visibilityState == VisibilityState.VISIBLE;
 	}
 
 }
