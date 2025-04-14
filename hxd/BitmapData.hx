@@ -30,7 +30,7 @@ class BitmapData {
 	public var width(get, never) : Int;
 	public var height(get, never) : Int;
 
-	public function new(width:Int, height:Int) {
+	public function new(width:Int, height:Int, ?willReadFrequently:Bool=false) {
 		if( width == -101 && height == -102 ) {
 			// no alloc
 		} else {
@@ -38,7 +38,11 @@ class BitmapData {
 			var canvas = js.Browser.document.createCanvasElement();
 			canvas.width = width;
 			canvas.height = height;
-			ctx = canvas.getContext2d();
+			if(willReadFrequently) {
+				ctx = canvas.getContext2d({willReadFrequently:true});
+			} else {
+				ctx = canvas.getContext2d();
+			}
 			#else
 			data = new BitmapInnerData();
 			#if hl

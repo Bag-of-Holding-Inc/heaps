@@ -498,9 +498,9 @@ class Image extends Resource {
 	}
 	#end
 
-	public function toBitmap():hxd.BitmapData {
+	public function toBitmap(?willReadFrequently:Bool=false):hxd.BitmapData {
 		getInfo();
-		var bmp = new hxd.BitmapData(inf.width, inf.height);
+		var bmp = new hxd.BitmapData(inf.width, inf.height, willReadFrequently);
 		var pixels = getPixels();
 		bmp.setPixels(pixels);
 		pixels.dispose();
