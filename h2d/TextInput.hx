@@ -74,6 +74,7 @@ class TextInput extends Text {
 	var lastChange = 0.;
 	var lastClick = 0.;
 	var maxHistorySize = 100;
+	var verticalInputPadding = 5.0; //Seems to help us keep from cutting off the bottoms of letters...
 
 	/**
 		Create a new TextInput instance.
@@ -562,13 +563,14 @@ class TextInput extends Text {
 	override function sync(ctx) {
 		var lines = getAllLines();
 		interactive.width = (inputWidth != null ? inputWidth : maxWidth != null ? Math.ceil(maxWidth) : textWidth);
+		
 		interactive.height = font.lineHeight * lines.length;
 		super.sync(ctx);
 	}
 
 	override function draw(ctx:RenderContext) {
 		if( inputWidth != null ) {
-			var h = localToGlobal(new h2d.col.Point(inputWidth, font.lineHeight));
+			var h = localToGlobal(new h2d.col.Point(inputWidth, font.lineHeight+verticalInputPadding));
 			ctx.clipRenderZone(absX, absY, h.x - absX, h.y - absY);
 		}
 
