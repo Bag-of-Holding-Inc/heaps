@@ -523,7 +523,7 @@ class TextInput extends Text {
 
 	override function set_font(f) {
 		super.set_font(f);
-		cursorTile = h2d.Tile.fromColor(0xFFFFFF, 1, font.size);
+		cursorTile = h2d.Tile.fromColor(0xFFFFFF, 1, Math.floor(Math.abs(font.size)));
 		cursorTile.dy = 2;
 		selectionTile = h2d.Tile.fromColor(0x3399FF, 0, hxd.Math.ceil(font.lineHeight));
 		return f;
