@@ -19,7 +19,7 @@ enum abstract ImageFormat(Int) {
 		#if hl
 		return false;
 		#else
-		return this == Jpg.toInt();
+		return this == Jpg.toInt() || this == Png.toInt();
 		#end
 	}
 

@@ -1,5 +1,6 @@
 package hxd.fmt.pak;
 import hxd.fs.FileEntry;
+import hxd.fs.BytesFileSystem.BytesFileEntry;
 #if (sys || nodejs)
 import sys.io.File;
 import sys.io.FileInput;
@@ -253,7 +254,7 @@ class FileSystem implements hxd.fs.FileSystem {
 	public function get( path : String ) : FileEntry {
 		var f = dict.get(path);
 		if( f == null ) throw new hxd.res.NotFound(path);
-		return f;
+		return new BytesFileEntry(path,f.getBytes());
 	}
 
 	public function exists( path : String ) {
