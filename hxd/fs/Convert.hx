@@ -524,4 +524,27 @@ class ConvertSVGToMSDF extends Convert {
 
 	static var _ = Convert.register(new ConvertSVGToMSDF("svg", "png"));
 }
+
+class AsepritePacker extends Convert {
+	public function new() {
+	  super("aseprite", "asedata");
+	}
+  
+	override function convert() {
+	  var parsedAse = aseprite.Utils.parseAse(ase.Ase.fromBytes(srcBytes));
+      // Combine PNG and data bytes into single stream
+      var pngBytes = parsedAse.pixels.toPNG();
+      var dataBytes = haxe.io.Bytes.ofString(haxe.Serializer.run(parsedAse.data));
+      var combinedBytes = haxe.io.Bytes.alloc(pngBytes.length + dataBytes.length + 8);
+      combinedBytes.setInt32(0, pngBytes.length);
+      combinedBytes.setInt32(4, dataBytes.length);
+      combinedBytes.blit(8, pngBytes, 0, pngBytes.length);
+      combinedBytes.blit(8 + pngBytes.length, dataBytes, 0, dataBytes.length);
+      save(combinedBytes);
+	  // Clean up
+	  parsedAse.pixels.dispose();
+	}
+  
+	static var _ = Convert.register(new AsepritePacker());
+  }
 #end
