@@ -83,11 +83,10 @@ class System {
 		
 		if (loopFunc != null) loopFunc();
 		
-		if(gameHasFocus) {
+		if(gameHasFocus && fpsLimit < 0) {
 			lastRqfId = js.Browser.window.requestAnimationFrame(browserLoop);
 		} else {
-			//js.html.Console.log("SCHEDULE ON TIMEOUT");
-			var targetFPS = 60;
+			var targetFPS = (fpsLimit > 0) ? fpsLimit : 60;
 			var targetFrameTime = 1000 / targetFPS;
 			var currentTime = js.Browser.window.performance.now();
 			var frameTime = currentTime - frameStartTime;
