@@ -5,6 +5,7 @@ import h3d.scene.MeshBatch.MeshBatchPart;
 
 class GPUMeshBatch extends MeshBatch {
 
+	static var INDIRECT_DRAW_ARGUMENTS_FMT = hxd.BufferFormat.make([{ name : "", type : DVec4 }, { name : "", type : DFloat }]);
 	static var INSTANCE_OFFSETS_FMT = hxd.BufferFormat.make([{ name : "", type : DFloat }]);
 
 	var matInfos : h3d.Buffer;
@@ -14,8 +15,11 @@ class GPUMeshBatch extends MeshBatch {
 	var instanceOffsetsCpu : haxe.io.Bytes;
 	var instanceOffsetsGpu : h3d.Buffer;
 	var subPartsInfos : h3d.Buffer;
-	var countBytes : haxe.io.Bytes;
 	var materialCount : Int;
+
+	public var computePass : h3d.mat.Pass;
+	public var commandBuffer : h3d.Buffer;
+	public var gpuCounter : h3d.GPUCounter;
 
 	var gpuLodEnabled : Bool;
 	var gpuCullingEnabled : Bool;
@@ -40,7 +44,7 @@ class GPUMeshBatch extends MeshBatch {
 	 * Has effects only if a lod is available in the primitive.
 	 */
 	public function enableGpuLod() {
-		gpuLodEnabled = primitiveSubPart != null || getPrimitive().lodCount() > 1;
+		gpuLodEnabled = primitiveSubParts != null || getPrimitive().lodCount() > 1;
 		return gpuLodEnabled;
 	}
 
@@ -53,7 +57,6 @@ class GPUMeshBatch extends MeshBatch {
 
 	function getLodCount() return gpuLodEnabled ? getPrimitive().lodCount() : 1;
 	override function updateHasPrimitiveOffset() meshBatchFlags.set(HasPrimitiveOffset);
-	override function useCommandBuffer() return true;
 
 	override function begin( emitCountTip = -1) {
 		if ( !gpuLodEnabled && !gpuCullingEnabled )
@@ -61,7 +64,7 @@ class GPUMeshBatch extends MeshBatch {
 
 		emitCountTip = super.begin(emitCountTip);
 
-		if ( primitiveSubPart != null && ( gpuCullingEnabled || gpuLodEnabled ) && instanceOffsetsCpu == null ) {
+		if ( primitiveSubParts != null && ( gpuCullingEnabled || gpuLodEnabled ) && instanceOffsetsCpu == null ) {
 			var size = emitCountTip * 2 * 4;
 			instanceOffsetsCpu = haxe.io.Bytes.alloc(size);
 		}
@@ -69,11 +72,10 @@ class GPUMeshBatch extends MeshBatch {
 		return emitCountTip;
 	}
 
-	override function createBatchData() {
-		return new GPUBatchData();
-	}
-
-	override function emitPrimitiveSubPart() {
+	override function emitPrimitiveSubParts() {
+		if ( primitiveSubParts.length > 1 )
+			throw "Multi material with gpu instancing is not supported";
+		var primitiveSubPart = primitiveSubParts[0];
 		if (emittedSubParts == null) {
 			currentSubParts = 0;
 			currentMaterialOffset = 0;
@@ -196,39 +198,27 @@ class GPUMeshBatch extends MeshBatch {
 
 		super.flush();
 
-		materialCount = 0;
-	}
-
-	override function onFlushPass(p : BatchData) {
-		var p = cast(p, GPUBatchData);
-		var prim = getPrimitive();
-		var lodCount = getLodCount();
-
-		var computeShader;
-		if( p.computePass == null ) {
-			computeShader = new h3d.shader.InstanceIndirect();
-			var computePass = new h3d.mat.Pass("batchUpdate");
+		var computeShader : h3d.shader.InstanceIndirect.InstanceIndirectBase;
+		if( computePass == null ) {
+			computeShader = emittedSubParts != null ? new h3d.shader.InstanceIndirect.SubPartInstanceIndirect() : new h3d.shader.InstanceIndirect();
+			computePass = new h3d.mat.Pass("batchUpdate");
 			computePass.addShader(computeShader);
 			addComputeShaders(computePass);
-			p.computePass = computePass;
 		} else {
-			computeShader = p.computePass.getShader(h3d.shader.InstanceIndirect);
+			computeShader = computePass.getShader(h3d.shader.InstanceIndirect.InstanceIndirectBase);
 		}
 
 		computeShader.ENABLE_LOD = gpuLodEnabled;
 		computeShader.ENABLE_CULLING = gpuCullingEnabled;
 		computeShader.ENABLE_DISTANCE_CLIPPING = maxDistance >= 0;
-		computeShader.radius = prim.getBounds().dimension() * 0.5;
 		computeShader.maxDistance = maxDistance;
-		computeShader.matInfos = matInfos;
-		computeShader.lodCount = lodCount;
-		computeShader.materialCount = materialCount;
 		computeShader.MAX_MATERIAL_COUNT = 16;
 		while ( materialCount * lodCount > computeShader.MAX_MATERIAL_COUNT )
 			computeShader.MAX_MATERIAL_COUNT = computeShader.MAX_MATERIAL_COUNT + 16;
+		computeShader.matInfos = matInfos;
 
 		if ( emittedSubParts != null ) {
-			computeShader.USING_SUB_PART = true;
+			var computeShader : h3d.shader.InstanceIndirect.SubPartInstanceIndirect = cast computeShader;
 			computeShader.subPartCount = emittedSubParts.length;
 			computeShader.subPartInfos = subPartsInfos;
 			computeShader.instanceOffsets = instanceOffsetsGpu;
@@ -236,36 +226,56 @@ class GPUMeshBatch extends MeshBatch {
 			var maxSubPartsElement = hxd.Math.ceil( emittedSubParts.length / 2 );
 			while ( maxSubPartsElement > computeShader.MAX_SUB_PART_BUFFER_ELEMENT_COUNT )
 				computeShader.MAX_SUB_PART_BUFFER_ELEMENT_COUNT = computeShader.MAX_SUB_PART_BUFFER_ELEMENT_COUNT + 16;
+		} else {
+			var computeShader : h3d.shader.InstanceIndirect = cast computeShader;
+			computeShader.instanceCount = instanceCount;
+			computeShader.radius = prim.getBounds().dimension() * 0.5;
+			computeShader.lodCount = lodCount;
+			computeShader.materialCount = materialCount;
 		}
+
+		var alloc = hxd.impl.Allocator.get();
+		var commandCountAllocated = hxd.Math.nextPOT( instanceCount * materialCount );
+		if ( commandBuffer == null ) {
+			commandBuffer = alloc.allocBuffer( commandCountAllocated, INDIRECT_DRAW_ARGUMENTS_FMT, UniformReadWrite );
+			gpuCounter = new h3d.GPUCounter();
+		} else if ( commandBuffer.vertices < commandCountAllocated ) {
+			alloc.disposeBuffer( commandBuffer );
+			commandBuffer = alloc.allocBuffer( commandCountAllocated, INDIRECT_DRAW_ARGUMENTS_FMT, UniformReadWrite );
+		}
+
+		materialCount = 0;
 	}
 
 	function addComputeShaders( pass : h3d.mat.Pass ) {}
 
+	override function emit(ctx:RenderContext) {
+		super.emit(ctx);
+		if ( commandBuffer != null && instanceCount > 0) {
+			var computeShader = computePass.getShader(h3d.shader.InstanceIndirect.InstanceIndirectBase);
+			if ( gpuCullingEnabled )
+				computeShader.frustum = ctx.getCameraFrustumBuffer();
+			computeShader.instanceData = dataPasses.buffers[0];
+			computeShader.commandBuffer = commandBuffer;
+			gpuCounter.reset();
+			computeShader.countBuffer = gpuCounter.buffer;
+			computeShader.ENABLE_COUNT_BUFFER = isCountBufferAllowed();
+			ctx.computeList(@:privateAccess computePass.shaders);
+			ctx.computeDispatch(instanceCount);
+		}
+	}
+
 	override function emitPass(ctx : RenderContext, p : BatchData) {
-		var p = cast(p, GPUBatchData);
-		var emittedCount = 0;
-		for( i => buf in p.buffers ) {
-			ctx.emitPass(p.pass, this).index = i | (p.matIndex << 16);
-			if ( p.commandBuffers != null && p.commandBuffers.length > 0 ) {
-				var count = hxd.Math.imin( instanceCount - p.maxInstance * i, p.maxInstance);
-				var computeShader = p.computePass.getShader(h3d.shader.InstanceIndirect);
-				if ( gpuCullingEnabled )
-					computeShader.frustum = ctx.getCameraFrustumBuffer();
-				computeShader.instanceData = buf;
-				computeShader.matIndex = p.matIndex;
-				computeShader.commandBuffer = p.commandBuffers[i];
-				if ( countBytes == null ) {
-					countBytes = haxe.io.Bytes.alloc(4*4);
-					countBytes.setInt32(0, 0);
-				}
-				p.countBuffers[i].uploadBytes(countBytes, 0, 1);
-				computeShader.countBuffer = p.countBuffers[i];
-				computeShader.startInstanceOffset = emittedCount;
-				computeShader.ENABLE_COUNT_BUFFER = isCountBufferAllowed();
-				ctx.computeList(@:privateAccess p.computePass.shaders);
-				ctx.computeDispatch(count);
-				emittedCount += count;
-			}
+		ctx.emitPass(p.pass, this).index = p.matIndex << 16;
+	}
+
+	override function setPassCommand(p : BatchData, bufferIndex : Int) {
+		super.setPassCommand(p, bufferIndex);
+		if ( commandBuffer != null ) {
+			@:privateAccess instanced.commands.data = commandBuffer.vbuf;
+			@:privateAccess instanced.commands.countBuffer = gpuCounter.buffer.vbuf;
+			@:privateAccess instanced.commands.offset = p.matIndex * instanceCount;
+			@:privateAccess instanced.commands.countOffset = 0;
 		}
 	}
 
@@ -296,17 +306,11 @@ class GPUMeshBatch extends MeshBatch {
 			alloc.disposeBuffer(instanceOffsetsGpu);
 		instanceOffsetsCpu = null;
 
+		if ( commandBuffer != null )
+			alloc.disposeBuffer(commandBuffer);
+		if( gpuCounter != null )
+			gpuCounter.dispose();
+
 		emittedSubParts = null;
-		countBytes = null;
-	}
-}
-
-class GPUBatchData extends BatchData {
-	public var computePass : h3d.mat.Pass;
-
-	override function clean() {
-		super.clean();
-
-		computePass = null;
 	}
 }

@@ -29,6 +29,31 @@ enum abstract ObjectFlags(Int) {
 		if( b ) this |= f.toInt() else this &= ~f.toInt();
 		return b;
 	}
+	public inline function toString() {
+		var s = "";
+		if( has(FPosChanged) ) s += " | PosChanged";
+		if( has(FVisible) ) s += " | Visible";
+		if( has(FCulled) ) s += " | Culled";
+		if( has(FFollowPositionOnly) ) s += " | FollowPositionOnly";
+		if( has(FLightCameraCenter) ) s += " | LightCameraCenter";
+		if( has(FAllocated) ) s += " | Allocated";
+		if( has(FAlwaysSyncAnimation) ) s += " | AlwaysSyncAnimation";
+		if( has(FInheritCulled) ) s += " | InheritCulled";
+		if( has(FModelRoot) ) s += " | ModelRoot";
+		if( has(FIgnoreBounds) ) s += " | IgnoreBounds";
+		if( has(FIgnoreCollide) ) s += " | IgnoreCollide";
+		if( has(FIgnoreParentTransform) ) s += " | IgnoreParentTransform";
+		if( has(FCullingColliderInherited) ) s += " | CullingColliderInherited";
+		if( has(FFixedPosition) ) s += " | FixedPosition";
+		if( has(FFixedPositionSynced) ) s += " | FixedPositionSynced";
+		if( has(FAlwaysSync) ) s += " | AlwaysSync";
+		if( has(FDrawn) ) s += " | Drawn";
+		if( has(FInSync) ) s += " | InSync";
+		if( has(FPosChangedInSync) ) s += " | PosChangedInSync";
+		if( s.length > 0 )
+			s = s.substr(3);
+		return s;
+	}
 }
 
 /**
@@ -204,7 +229,7 @@ class Object {
 		Create a new empty object, and adds it to the parent object if not null.
 	**/
 	public function new( ?parent : Object ) {
-		flags = new ObjectFlags(0x8000);
+		flags = new ObjectFlags(FAlwaysSync.toInt());
 		absPos = new h3d.Matrix();
 		absPos.identity();
 		x = 0; y = 0; z = 0; scaleX = 1; scaleY = 1; scaleZ = 1;

@@ -456,7 +456,7 @@ class GlDriver extends Driver {
 				case Uniform:
 					gl.uniformBlockBinding(p.p,s.buffers[i],i + start);
 				case RW, Storage:
-					#if (hl_ver >= version("1.15.0"))
+					#if (hl && hl_ver >= version("1.15.0"))
 					gl.shaderStorageBlockBinding(p.p,s.buffers[i], i + start);
 					#end
 				default:
@@ -774,7 +774,7 @@ class GlDriver extends Driver {
 			gl.colorMask(m & 1 != 0, m & 2 != 0, m & 4 != 0, m & 8 != 0);
 			var mi = m >> 4;
 			if ( mi > 0 ) {
-				#if (hl_ver >= version("1.14.0"))
+				#if (hl && hl_ver >= version("1.14.0"))
 				var i = 1;
 				do {
 					if ( mi & 15 > 0 ) {
@@ -1470,6 +1470,15 @@ class GlDriver extends Driver {
 		if( b.flags.has(IndexBuffer) ) curIndexBuffer = null;
 	}
 
+	override function readBufferBytes(b:h3d.Buffer, startVertex:Int, vertexCount:Int, buf:haxe.io.Bytes, bufPos:Int) {
+		var stride = b.format.strideBytes;
+		var totalSize = vertexCount*stride;
+		var type = b.flags.has(IndexBuffer) ? GL.ELEMENT_ARRAY_BUFFER : GL.ARRAY_BUFFER;
+		gl.bindBuffer(type, b.vbuf);
+		gl.getBufferSubData(type, startVertex*stride, @:privateAccess buf.b, bufPos*STREAM_POS, totalSize);
+		gl.bindBuffer(type, null);
+	}
+
 	override function uploadIndexData( i : h3d.Buffer, startIndice : Int, indiceCount : Int, buf : hxd.IndexBuffer, bufPos : Int ) {
 		var bits = i.format.strideBytes >> 1;
 		gl.bindBuffer(GL.ELEMENT_ARRAY_BUFFER, i.vbuf);
@@ -1579,6 +1588,20 @@ class GlDriver extends Driver {
 		b.data = data;
 	}
 
+	override function uploadInstanceBufferBytes(b : InstanceBuffer, startVertex : Int, vertexCount : Int, buf : haxe.io.Bytes, bufPos : Int ) {
+		var stride = 5*4;
+		#if hl
+		var type = GL.DRAW_INDIRECT_BUFFER;
+		gl.bindBuffer(type, b.data);
+		gl.bufferSubData(type, startVertex * stride, streamData(buf.getData(),bufPos,vertexCount * stride), bufPos * STREAM_POS, vertexCount * stride);
+		#else
+		var type = GL.ARRAY_BUFFER;
+	 	var sub = new Uint8Array(buf.getData(), bufPos, vertexCount * stride);
+	 	gl.bufferSubData(type, startVertex * stride, sub);
+		#end
+		gl.bindBuffer(type, null);
+	}
+
 	override function disposeInstanceBuffer(b:InstanceBuffer) {
 		b.data = null;
 	}
@@ -1598,14 +1621,28 @@ class GlDriver extends Driver {
 		}
 		#if !js
 		if( hasMultiIndirect && commands.data != null ) {
+			#if (haxe_ver < 5)
+				var arr = new hl.NativeArray<Int>(1);
+				arr[0] = commands.offset * InstanceBuffer.ELEMENT_SIZE;
+				var commandOffset : hl.Bytes = (cast arr : hl.NativeArray<hl.Bytes>)[0];
+			#else
+				var commandOffset : hl.Bytes = hl.Api.unsafeCast(commands.offset * InstanceBuffer.ELEMENT_SIZE);
+			#end
 			gl.bindBuffer(GL.DRAW_INDIRECT_BUFFER, commands.data);
 			#if (hlsdl >= version("1.15.0"))
 			if ( commands.countBuffer != null && hasMultiIndirectCount ) {
+				#if (haxe_ver < 5)
+					var arr = new hl.NativeArray<Int>(1);
+					arr[0] = commands.countOffset * 4;
+					var countOffset : hl.Bytes = (cast arr : hl.NativeArray<hl.Bytes>)[0];
+				#else
+					var countOffset : hl.Bytes = hl.Api.unsafeCast(commands.countOffset * 4);
+				#end
 				gl.bindBuffer(GL.PARAMETER_BUFFER, commands.countBuffer);
-				gl.multiDrawElementsIndirectCount(drawMode, kind, null, null, commands.commandCount, 0);
+				gl.multiDrawElementsIndirectCount(drawMode, kind, commandOffset, countOffset, commands.commandCount, 0);
 			} else
 			#end
-			gl.multiDrawElementsIndirect(drawMode, kind, null, commands.commandCount, 0);
+			gl.multiDrawElementsIndirect(drawMode, kind, commandOffset, commands.commandCount, 0);
 			gl.bindBuffer(GL.DRAW_INDIRECT_BUFFER, null);
 			return;
 		}
