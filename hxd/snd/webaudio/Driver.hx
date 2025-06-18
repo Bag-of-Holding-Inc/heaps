@@ -89,6 +89,7 @@ class Driver implements hxd.snd.Driver {
 	}
 
 	public function setSourceVolume (source : SourceHandle, value : Float) : Void {
+		if(!std.Math.isFinite(value)) return;
 		source.gain.gain.value = value;
 	}
 
