@@ -31,6 +31,7 @@ class SpatializationDriver extends EffectDriver<Spatialization> {
 	}
 
 	override function apply(e : Spatialization, source : SourceHandle) : Void {
+		if(!std.Math.isFinite(e.position.x) || !std.Math.isFinite(e.position.y) || !std.Math.isFinite(e.position.z)) return;
 		source.panner.setPosition(-e.position.x, e.position.y, e.position.z);
 		source.panner.setOrientation(-e.direction.x, e.direction.y, e.direction.z);
 		// TODO: Velocity
