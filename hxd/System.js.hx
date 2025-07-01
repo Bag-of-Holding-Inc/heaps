@@ -26,6 +26,9 @@ class System {
 	public static var screenDPI(get,never) : Float;
 	public static var setCursor = setNativeCursor;
 	public static var allowTimeout(get, set) : Bool;
+	public static var deltaTime:Float = 0.0;
+
+	static var lastFrameStartTime:Float = 0.0;
 
 	public static function timeoutTick() : Void {
 	}
@@ -46,6 +49,7 @@ class System {
 	}
 
 	public static function setLoop( f : Void -> Void ) : Void {
+		lastFrameStartTime = js.Browser.window.performance.now();
 		if( !loopInit ) {
 			loopInit = true;
 			browserLoop();
@@ -75,11 +79,15 @@ class System {
 	// 	if( loopFunc != null ) loopFunc();
 	// }
 
-	static function browserLoop(?deltaTime:Float) {
+	static function browserLoop(?loopDelta:Float) {
 		//js.html.Console.log("LOOP");
 		lastRqfId = 0;
+
+		var currentTime = (loopDelta != null ? loopDelta : js.Browser.window.performance.now());
+
+		System.deltaTime = (currentTime - lastFrameStartTime) / 1000.0;
 		
-		var frameStartTime = js.Browser.window.performance.now();
+		lastFrameStartTime = currentTime;
 		
 		if (loopFunc != null) loopFunc();
 		
@@ -88,8 +96,7 @@ class System {
 		} else {
 			var targetFPS = (fpsLimit > 0) ? fpsLimit : 60;
 			var targetFrameTime = 1000 / targetFPS;
-			var currentTime = js.Browser.window.performance.now();
-			var frameTime = currentTime - frameStartTime;
+			var frameTime = System.deltaTime;
 			var nextDelay = Math.max(0, targetFrameTime - frameTime);
 			js.Browser.window.setTimeout(browserLoop, Std.int(nextDelay));
 		}
